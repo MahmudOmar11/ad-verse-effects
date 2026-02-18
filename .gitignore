@@ -1,0 +1,34 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Results (large output files — tracked separately or via Git LFS)
+# Uncomment the next line to exclude results from the repo:
+# results/**/*.xlsx
+# results/**/*.jsonl
+
+# Checkpoint files
+*.jsonl
+
+# Temporary
+*.tmp
+*.bak

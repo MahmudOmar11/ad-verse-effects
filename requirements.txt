@@ -1,0 +1,18 @@
+# Ad-verse Effects — Python Dependencies
+# Install: pip install -r requirements.txt
+
+# Core
+pandas>=2.0.0
+numpy>=1.24.0
+openpyxl>=3.1.0
+
+# API Clients
+openai>=2.0.0
+anthropic>=0.40.0
+google-genai>=1.0.0
+
+# Visualization (analysis scripts)
+matplotlib>=3.7.0
+
+# Statistics (optional but recommended)
+scipy>=1.10.0
