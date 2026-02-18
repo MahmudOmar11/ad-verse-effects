@@ -147,5 +147,5 @@ The analysis scripts generate multi-page PDFs with publication-ready figures, su
 ---
 
 <p align="center">
-  <sub>MIT License · Mahmud Omar, MD · BRIDGE Lab, Mount Sinai</sub>
+  <sub>MIT License · Mahmud Omar, MD · BRIDGE GenAI Lab, BIDMC · Mount Sinai Medical Center</sub>
 </p>

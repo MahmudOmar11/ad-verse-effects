@@ -2,7 +2,9 @@
 
 **Ad-verse Effects: Do Pharmaceutical Advertisements Embedded in LLM Interactions Shift Clinical Recommendations?**
 
-Mahmud Omar, MD — BRIDGE Lab, Icahn School of Medicine at Mount Sinai
+Mahmud Omar, MD
+Head of Research, BRIDGE GenAI Lab · BIDMC, Harvard Medical School Teaching Hospital
+Research Scientist, Windreich Dept. of AI and Human Health · Mount Sinai Medical Center
 
 ---
 
