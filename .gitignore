@@ -1,32 +1,10 @@
-# Python
 __pycache__/
 *.py[cod]
-*.egg-info/
-dist/
-build/
-*.egg
 .venv/
 venv/
-env/
-
-# IDE
 .idea/
 .vscode/
-*.swp
-*.swo
-*~
-
-# macOS
 .DS_Store
-.AppleDouble
-.LSOverride
-
-# Results (large output files — add to repo or use Git LFS)
-# results/**/*.xlsx
-
-# Checkpoint files
 *.jsonl
-
-# Temporary
 *.tmp
 *.bak
