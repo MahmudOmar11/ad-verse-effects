@@ -21,10 +21,8 @@ env/
 .AppleDouble
 .LSOverride
 
-# Results (large output files — tracked separately or via Git LFS)
-# Uncomment the next line to exclude results from the repo:
+# Results (large output files — add to repo or use Git LFS)
 # results/**/*.xlsx
-# results/**/*.jsonl
 
 # Checkpoint files
 *.jsonl

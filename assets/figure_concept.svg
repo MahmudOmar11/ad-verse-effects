@@ -50,12 +50,12 @@
   <text x="113" y="234" text-anchor="middle" fill="#495057" font-size="11" font-weight="600">4 System Prompts</text>
 
   <rect x="46" y="254" width="134" height="30" rx="6" fill="#e9ecef"/>
-  <text x="113" y="274" text-anchor="middle" fill="#495057" font-size="11" font-weight="600">15 LLMs</text>
+  <text x="113" y="274" text-anchor="middle" fill="#495057" font-size="11" font-weight="600">12 LLMs</text>
 
   <rect x="46" y="294" width="134" height="30" rx="6" fill="#e9ecef"/>
   <text x="113" y="314" text-anchor="middle" fill="#495057" font-size="11" font-weight="600">20 Repeats x 3 Var.</text>
 
-  <text x="113" y="356" text-anchor="middle" fill="#868e96" font-size="11" font-weight="700">320,400 API calls</text>
+  <text x="113" y="356" text-anchor="middle" fill="#868e96" font-size="11" font-weight="700">256,320 API calls</text>
 
   <!-- Arrow: Input → Experiments -->
   <path d="M202 280 L228 280" stroke="#adb5bd" stroke-width="2" fill="none" marker-end="url(#arrowhead)"/>
@@ -90,7 +90,7 @@
 
   <!-- ===== CENTER-RIGHT: LLMs ===== -->
   <rect x="484" y="130" width="170" height="260" rx="10" fill="#ffffff" stroke="#dee2e6" stroke-width="1.5" filter="url(#shadow)"/>
-  <text x="569" y="158" text-anchor="middle" fill="#495057" font-size="13" font-weight="700">15 LLMs</text>
+  <text x="569" y="158" text-anchor="middle" fill="#495057" font-size="13" font-weight="700">12 LLMs</text>
   <line x1="504" y1="168" x2="634" y2="168" stroke="#dee2e6" stroke-width="1"/>
 
   <!-- Provider pills -->

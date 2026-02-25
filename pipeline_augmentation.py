@@ -1,29 +1,24 @@
 #!/usr/bin/env python3
 """
-Ad-verse Effects Pipeline v5-AUG  —  Accuracy-Cost Augmentation
-================================================================
+Ad-verse Effects — Accuracy Cost Experiment Pipeline (Experiment 3)
+====================================================================
 Tests whether ad-induced brand preference degrades clinical accuracy.
 
 Design:
   - 10 scenarios (A01–A10), 3 variants each = 30 vignettes
   - 3 answer options: A (advertised 1), B (advertised 2), C (correct non-advertised)
   - correct_answer = C for ALL scenarios
-  - Ad conditions: baseline, ad_a, ad_b  (same ads from main study)
+  - Ad conditions: baseline, ad_a, ad_b
   - 4 system prompts × 20 repeats
-
-  Per scenario: 3 variants × 4 prompts × 3 conditions × 20 reps = 720 calls
-  10 scenarios → 7,200 API calls per model
+  - 7,200 API calls per model; 86,400 across 12 models
 
 Primary metric: Accuracy cost = P(choose C | baseline) − P(choose C | ad)
 
-Reuses the SAME Ad Artifacts Database as the main experiment.
-
 Requirements:
-    pip install -U "openai>=2.0.0" "anthropic>=0.40.0" \
-        "google-genai>=1.0.0" pandas openpyxl scipy
+    pip install -r requirements.txt
 
 Usage:
-    python ad_verse_pipeline_v5_aug.py
+    python pipeline_augmentation.py
 """
 
 import asyncio, json, os, re, sys, getpass, hashlib, time, math
@@ -71,25 +66,22 @@ except ImportError:
 # ──────────────────────────────────────────────────────────────
 MODEL_PRESETS = {
     "openai": [
-        {"model": "gpt-4o-mini",   "name": "GPT-4o Mini (small)",     "tier": "small",    "api": "chat"},
-        {"model": "gpt-4o",        "name": "GPT-4o (large)",          "tier": "large",    "api": "chat"},
-        {"model": "o3-mini",       "name": "o3-mini (reasoning)",     "tier": "small",    "api": "chat"},
-        {"model": "gpt-4.1-nano",  "name": "GPT-4.1 Nano (nano)",    "tier": "nano",     "api": "responses"},
         {"model": "gpt-4.1-mini",  "name": "GPT-4.1 Mini (small)",   "tier": "small",    "api": "responses"},
         {"model": "gpt-4.1",       "name": "GPT-4.1 (large)",        "tier": "large",    "api": "responses"},
+        {"model": "gpt-5-mini",    "name": "GPT-5 Mini (small)",     "tier": "small",    "api": "responses"},
         {"model": "gpt-5.2",       "name": "GPT-5.2 (flagship)",     "tier": "flagship", "api": "responses"},
+        {"model": "o4-mini",       "name": "o4-mini (reasoning)",    "tier": "small",    "api": "responses"},
     ],
     "anthropic": [
-        {"model": "claude-haiku-4-5",   "name": "Claude Haiku 4.5 (small)",   "tier": "small"},
-        {"model": "claude-sonnet-4-5",  "name": "Claude Sonnet 4.5 (large)",  "tier": "large"},
-        {"model": "claude-opus-4-6",    "name": "Claude Opus 4.6 (flagship)", "tier": "flagship"},
+        {"model": "claude-haiku-4-5",   "name": "Claude Haiku 4.5 (small)",    "tier": "small"},
+        {"model": "claude-sonnet-4-5",  "name": "Claude Sonnet 4.5 (large)",   "tier": "large"},
+        {"model": "claude-sonnet-4-6",  "name": "Claude Sonnet 4.6 (large)",   "tier": "large"},
+        {"model": "claude-opus-4-6",    "name": "Claude Opus 4.6 (flagship)",  "tier": "flagship"},
     ],
     "google": [
-        {"model": "gemini-2.5-flash-lite", "name": "Gemini 2.5 Flash-Lite (nano)",   "tier": "nano"},
-        {"model": "gemini-2.5-flash",      "name": "Gemini 2.5 Flash (small)",       "tier": "small"},
-        {"model": "gemini-2.5-pro",        "name": "Gemini 2.5 Pro (large)",         "tier": "large"},
-        {"model": "gemini-3-flash-preview","name": "Gemini 3 Flash Preview (large)", "tier": "large"},
-        {"model": "gemini-3-pro-preview",  "name": "Gemini 3 Pro Preview (flagship)","tier": "flagship"},
+        {"model": "gemini-2.5-flash-lite",  "name": "Gemini 2.5 Flash-Lite (nano)",    "tier": "nano"},
+        {"model": "gemini-2.5-flash",       "name": "Gemini 2.5 Flash (small)",        "tier": "small"},
+        {"model": "gemini-3-flash-preview", "name": "Gemini 3 Flash Preview (large)",  "tier": "large"},
     ],
 }
 
@@ -402,21 +394,43 @@ def build_tasks(
 # ASYNC API CALLERS  (identical to main pipeline v5)
 # ──────────────────────────────────────────────────────────────
 
+def _is_reasoning_model(model: str) -> bool:
+    """Check if a model is a reasoning model (no temperature, uses reasoning_effort).
+
+    Reasoning models: o-series (o3, o3-mini, o4-mini) and GPT-5.x family
+    (gpt-5, gpt-5-mini, gpt-5.1, gpt-5.2).  These use internal chain-of-thought
+    and do NOT support the temperature parameter.
+    """
+    m = model.lower()
+    return m.startswith("o") or m.startswith("gpt-5")
+
+
 async def call_openai_responses(client, prompt: str, sys_prompt: str, sem: asyncio.Semaphore) -> Tuple[str, Dict]:
+    """Call OpenAI Responses API.
+
+    Reasoning models (o-series, gpt-5.x): max_output_tokens includes reasoning tokens,
+    so we set it to 4096 and use reasoning.effort="low" for single-letter answers.
+    Temperature is NOT supported for these models.
+    """
     meta = {}
     async with sem:
         for attempt in range(1, CFG.max_retries + 1):
             try:
+                is_reasoning = _is_reasoning_model(CFG.model)
                 kwargs = dict(
                     model=CFG.model,
                     input=[
                         {"role": "developer", "content": sys_prompt},
                         {"role": "user", "content": prompt},
                     ],
-                    max_output_tokens=CFG.max_tokens,
                     store=CFG.store,
                 )
-                if not CFG.model.startswith("o"):
+                if is_reasoning:
+                    kwargs["max_output_tokens"] = 4096
+                    kwargs["reasoning"] = {"effort": "low"}
+                else:
+                    kwargs["max_output_tokens"] = CFG.max_tokens
+                if not is_reasoning:
                     kwargs["temperature"] = CFG.temperature
                 resp = await client.responses.create(**kwargs)
                 meta["response_id"] = getattr(resp, "id", None)
@@ -436,19 +450,29 @@ async def call_openai_responses(client, prompt: str, sys_prompt: str, sem: async
 
 
 async def call_openai_chat(client, prompt: str, sys_prompt: str, sem: asyncio.Semaphore) -> Tuple[str, Dict]:
+    """Call OpenAI Chat Completions API.
+
+    Reasoning models (o-series, gpt-5.x): use max_completion_tokens (includes reasoning)
+    instead of max_tokens, set reasoning_effort="low". Temperature NOT supported.
+    """
     meta = {}
     async with sem:
         for attempt in range(1, CFG.max_retries + 1):
             try:
+                is_reasoning = _is_reasoning_model(CFG.model)
                 kwargs = dict(
                     model=CFG.model,
                     messages=[
                         {"role": "system", "content": sys_prompt},
                         {"role": "user", "content": prompt},
                     ],
-                    max_tokens=CFG.max_tokens,
                 )
-                if not CFG.model.startswith("o"):
+                if is_reasoning:
+                    kwargs["max_completion_tokens"] = 4096
+                    kwargs["reasoning_effort"] = "low"
+                else:
+                    kwargs["max_tokens"] = CFG.max_tokens
+                if not is_reasoning:
                     kwargs["temperature"] = CFG.temperature
                 resp = await client.chat.completions.create(**kwargs)
                 meta["response_id"] = getattr(resp, "id", None)
@@ -498,18 +522,30 @@ async def call_anthropic(client, prompt: str, sys_prompt: str, sem: asyncio.Sema
     return "", meta
 
 
-async def call_google(client, prompt: str, sys_prompt: str, sem: asyncio.Semaphore) -> Tuple[str, Dict]:
+async def call_google(client, prompt: str, sys_prompt: str, sem: asyncio.Semaphore,
+                      rate_limiter=None) -> Tuple[str, Dict]:
     meta = {}
     max_attempts = max(CFG.max_retries, 8)
     async with sem:
+        if rate_limiter:
+            await rate_limiter.acquire()
         for attempt in range(1, max_attempts + 1):
             try:
-                gen_config = gtypes.GenerateContentConfig(
+                config_kwargs = dict(
                     system_instruction=sys_prompt,
                     temperature=CFG.temperature,
                     max_output_tokens=CFG.max_tokens,
-                    thinking_config=gtypes.ThinkingConfig(thinking_budget=1024 if "gemini-3" in model else 0),
                 )
+                model_lower = CFG.model.lower()
+                if "gemini-3" in model_lower:
+                    config_kwargs["thinking_config"] = gtypes.ThinkingConfig(
+                        thinking_budget=1024,
+                    )
+                else:
+                    config_kwargs["thinking_config"] = gtypes.ThinkingConfig(
+                        thinking_budget=0,
+                    )
+                gen_config = gtypes.GenerateContentConfig(**config_kwargs)
                 resp = await client.aio.models.generate_content(
                     model=CFG.model,
                     contents=prompt,
@@ -597,6 +633,23 @@ def grade_response(task: Dict, choice: Optional[str]) -> Dict:
 # PROGRESS
 # ──────────────────────────────────────────────────────────────
 
+class RateLimiter:
+    """Token-bucket style rate limiter for requests-per-minute (RPM)."""
+    def __init__(self, rpm: int):
+        self.rpm = rpm
+        self.interval = 60.0 / rpm
+        self._lock = asyncio.Lock()
+        self._last = 0.0
+
+    async def acquire(self):
+        async with self._lock:
+            now = asyncio.get_event_loop().time()
+            wait = self._last + self.interval - now
+            if wait > 0:
+                await asyncio.sleep(wait)
+            self._last = asyncio.get_event_loop().time()
+
+
 class Progress:
     def __init__(self, total: int):
         self.total = total
@@ -635,10 +688,13 @@ class Progress:
 
 async def process_task(
     task: Dict, client, sem: asyncio.Semaphore,
-    progress: Progress, caller,
+    progress: Progress, caller, rate_limiter=None,
 ) -> Dict:
     sys_prompt = task["system_prompt"]
-    raw, meta = await caller(client, task["prompt"], sys_prompt, sem)
+    if rate_limiter and caller == call_google:
+        raw, meta = await caller(client, task["prompt"], sys_prompt, sem, rate_limiter=rate_limiter)
+    else:
+        raw, meta = await caller(client, task["prompt"], sys_prompt, sem)
     choice = parse_choice(raw) if raw else None
     grades = grade_response(task, choice)
 
@@ -775,9 +831,10 @@ async def run_pipeline():
     print(f"  {sdk_info()}\n")
 
     # ── Provider ──
-    print("  Available providers: openai, anthropic, google, vertex")
+    print("  Available providers: openai, anthropic, google, vertex, medgemma")
+    print("    (medgemma = MedGemma on Vertex AI — requires deployed endpoint)")
     prov = input(f"  Provider [{CFG.provider}]: ").strip().lower()
-    if prov in ("openai", "anthropic", "google", "vertex"):
+    if prov in ("openai", "anthropic", "google", "vertex", "medgemma"):
         CFG.provider = prov
 
     # ── Model selection ──
@@ -825,10 +882,20 @@ async def run_pipeline():
     r = input(f"  Repeats per condition [{CFG.n_repeats}]: ").strip()
     if r: CFG.n_repeats = max(1, int(r))
     default_conc = CFG.max_concurrent
+    is_preview = "preview" in CFG.model.lower()
     if CFG.provider == "google":
-        default_conc = min(CFG.max_concurrent, 15)
+        if is_preview:
+            default_conc = 5
+            print(f"\n  ⚠  WARNING: '{CFG.model}' is a PREVIEW model on AI Studio.")
+            print(f"  Preview models have strict limits: ~10-50 RPM and 250 RPD.")
+            print(f"  For high-volume runs, consider Vertex AI (provider='vertex').")
+        else:
+            default_conc = min(CFG.max_concurrent, 15)
     elif CFG.provider == "vertex":
-        default_conc = min(CFG.max_concurrent, 50)
+        if is_preview:
+            default_conc = min(CFG.max_concurrent, 30)
+        else:
+            default_conc = min(CFG.max_concurrent, 50)
     c = input(f"  Max concurrency [{default_conc}]: ").strip()
     CFG.max_concurrent = max(1, int(c)) if c else default_conc
 
@@ -900,13 +967,52 @@ async def run_pipeline():
             project = input("  Google Cloud Project ID: ").strip()
         if "gemini-3" in CFG.model:
             location = "global"
+            print(f"  Note: Gemini 3 preview models require location='global'")
         else:
             location = os.environ.get("GOOGLE_CLOUD_LOCATION", "").strip()
             if not location:
                 location = input("  Location [us-central1]: ").strip() or "us-central1"
+        print(f"  Using google-genai SDK (Vertex AI: {project} / {location})")
+        print(f"  Auth: using Application Default Credentials (gcloud auth)")
         client = genai.Client(vertexai=True, project=project, location=location)
         caller = call_google
         CFG.provider = "vertex"
+    elif CFG.provider == "medgemma":
+        # ── MedGemma via Vertex AI deployed endpoint ──
+        # Deploy from Vertex AI Model Garden, then provide endpoint ID.
+        # The vLLM endpoint is OpenAI chat-completions compatible.
+        if AsyncOpenAI is None:
+            raise ImportError("pip install -U 'openai>=2.0.0'")
+
+        import subprocess
+        project = os.environ.get("GOOGLE_CLOUD_PROJECT", "").strip()
+        if not project:
+            project = input("  Google Cloud Project ID: ").strip()
+        location = os.environ.get("GOOGLE_CLOUD_LOCATION", "").strip()
+        if not location:
+            location = input("  Location [us-central1]: ").strip() or "us-central1"
+        endpoint_id = os.environ.get("MEDGEMMA_ENDPOINT_ID", "").strip()
+        if not endpoint_id:
+            print("  Deploy MedGemma from Vertex AI Model Garden first.")
+            endpoint_id = input("  MedGemma Endpoint ID: ").strip()
+
+        base_url = (
+            f"https://{location}-aiplatform.googleapis.com/v1beta1/"
+            f"projects/{project}/locations/{location}/endpoints/{endpoint_id}"
+        )
+        try:
+            token = subprocess.check_output(
+                ["gcloud", "auth", "print-access-token"],
+                stderr=subprocess.DEVNULL,
+            ).decode().strip()
+            print(f"  Auth token obtained from gcloud CLI.")
+        except Exception:
+            token = ask_key("GOOGLE_AUTH_TOKEN", "Google Auth Token")
+
+        print(f"  Using MedGemma endpoint: {endpoint_id} ({location})")
+        client = AsyncOpenAI(base_url=base_url, api_key=token)
+        caller = call_openai_chat
+        CFG.model = CFG.model or "medgemma-4b-it"
     else:
         raise ValueError(f"Unknown provider: {CFG.provider}")
     print("  API client ready.\n")
@@ -920,8 +1026,13 @@ async def run_pipeline():
     print(f"  Task plan (AUGMENTATION):")
     print(f"    {len(scenarios)} scenarios × {n_prompts} system prompts × 3 conditions × {CFG.n_repeats} repeats")
     print(f"    {n_bl} baseline + {n_ad} ad-condition = {len(tasks):,} total API calls")
-    est_min = len(tasks) / min(CFG.max_concurrent, 30) * 1.2 / 60
-    print(f"    Est. time: ~{est_min:.1f} min\n")
+    is_preview = "preview" in CFG.model.lower()
+    if CFG.provider == "google" and is_preview:
+        est_min = len(tasks) / 30 * 1.1 / 60
+        print(f"    Est. time: ~{est_min:.1f} min (preview model — rate limited to ~30 RPM)")
+    else:
+        est_min = len(tasks) / min(CFG.max_concurrent, 30) * 1.2 / 60
+        print(f"    Est. time: ~{est_min:.1f} min")
 
     if input("  Proceed? (y/n): ").strip().lower() not in ("y", "yes"):
         print("  Aborted.")
@@ -934,13 +1045,21 @@ async def run_pipeline():
         test_resp, test_meta = await caller(client, "What is 2+2? Answer with just the number.", "You are a helpful assistant.", test_sem)
         if test_meta.get("api_error"):
             print(f"\n  !! TEST FAILED: {test_meta['api_error']}")
-            if input("  Continue anyway? (y/n): ").strip().lower() not in ("y", "yes"):
+            try:
+                if input("  Continue anyway? (y/n): ").strip().lower() not in ("y", "yes"):
+                    return
+            except (KeyboardInterrupt, EOFError):
+                print("\n  Aborted.")
                 return
         else:
             print(f"  ✓ Test OK — response: {test_resp.strip()[:60]!r}")
     except Exception as e:
         print(f"\n  !! TEST EXCEPTION: {e}")
-        if input("  Continue anyway? (y/n): ").strip().lower() not in ("y", "yes"):
+        try:
+            if input("  Continue anyway? (y/n): ").strip().lower() not in ("y", "yes"):
+                return
+        except (KeyboardInterrupt, EOFError):
+            print("\n  Aborted.")
             return
 
     # ── Output paths ──
@@ -983,7 +1102,22 @@ async def run_pipeline():
         sem = asyncio.Semaphore(CFG.max_concurrent)
         progress = Progress(len(pending))
         t0 = time.time()
-        coros = [process_task(t, client, sem, progress, caller) for t in pending]
+
+        # RPM rate limiter for Google (especially preview models)
+        rate_limiter = None
+        if CFG.provider in ("google", "vertex"):
+            is_preview = "preview" in CFG.model.lower()
+            if CFG.provider == "google" and is_preview:
+                rpm = 30
+            elif CFG.provider == "google":
+                rpm = 800
+            else:
+                rpm = None
+            if rpm:
+                rate_limiter = RateLimiter(rpm)
+                print(f"  Rate limiter: {rpm} RPM for {CFG.provider}/{CFG.model}")
+
+        coros = [process_task(t, client, sem, progress, caller, rate_limiter=rate_limiter) for t in pending]
         new_rows = await asyncio.gather(*coros)
         elapsed = time.time() - t0
         rate = len(new_rows) / elapsed if elapsed > 0 else 0

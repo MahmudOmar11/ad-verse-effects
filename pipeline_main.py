@@ -1,25 +1,21 @@
 #!/usr/bin/env python3
 """
-Ad-verse Effects Pipeline v5.0
-===============================
-Major additions over v4:
-  - 4 SYSTEM PROMPT CONDITIONS (physician, helpful_ai, customer_service, no_persona)
-  - 15 models across 3 providers (nano → flagship, including Gemini 3)
-  - Automatic OpenAI API routing (Responses vs Chat Completions)
-  - System prompt × ad condition factorial design
+Ad-verse Effects — Main Experiment Pipeline
+=============================================
+Runs Experiments 1 (Preference Shift) and 2 (Wellness Endorsement)
+across 12 LLMs from OpenAI, Anthropic, and Google.
 
-Design:
-  Rx  (S01-S13): 4 options × 3 ad-conditions × 4 sys-prompts = 12 combos per variant
-  Wellness (S14-S23): 2 options × 2 ad-conditions × 4 sys-prompts = 8 combos per variant
-  Total per model: 708 condition-combos × N repeats
-  At N=20: 14,160 API calls per model.
+Factorial design:
+  - 4 system prompt personas × 3 ad conditions × 3 vignette variants × 20 repeats
+  - Rx  (S01–S13): 4 drug options → 9,360 calls per model
+  - Wellness (S14–S23): 2 options → 4,800 calls per model
+  - Total: 14,160 API calls per model; 169,920 across 12 models
 
 Requirements:
-    pip install -U "openai>=2.0.0" "anthropic>=0.40.0" \
-        "google-genai>=1.0.0" pandas openpyxl scipy
+    pip install -r requirements.txt
 
 Usage:
-    python ad_verse_pipeline_v5.py
+    python pipeline_main.py
 """
 
 import asyncio, json, os, re, sys, getpass, hashlib, time, math
@@ -71,27 +67,23 @@ except ImportError:
 # ──────────────────────────────────────────────────────────────
 MODEL_PRESETS = {
     "openai": [
-        {"model": "gpt-4o-mini",   "name": "GPT-4o Mini (small, Jul 2024)",     "tier": "small",    "api": "chat"},
-        {"model": "gpt-4o",        "name": "GPT-4o (large, May 2024)",          "tier": "large",    "api": "chat"},
-        {"model": "o3-mini",       "name": "o3-mini (reasoning, Jan 2026)",     "tier": "small",    "api": "chat"},
-        {"model": "gpt-4.1-nano",  "name": "GPT-4.1 Nano (nano, Apr 2025)",    "tier": "nano",     "api": "responses"},
         {"model": "gpt-4.1-mini",  "name": "GPT-4.1 Mini (small, Apr 2025)",   "tier": "small",    "api": "responses"},
         {"model": "gpt-4.1",       "name": "GPT-4.1 (large, Apr 2025)",        "tier": "large",    "api": "responses"},
+        {"model": "gpt-5-mini",    "name": "GPT-5 Mini (small, Aug 2025)",     "tier": "small",    "api": "responses"},
         {"model": "gpt-5.2",       "name": "GPT-5.2 (flagship, Jan 2026)",     "tier": "flagship", "api": "responses"},
+        {"model": "o4-mini",       "name": "o4-mini (reasoning, Apr 2025)",    "tier": "small",    "api": "responses"},
     ],
     "anthropic": [
-        {"model": "claude-haiku-4-5",   "name": "Claude Haiku 4.5 (small, Oct 2024)",   "tier": "small"},
-        {"model": "claude-sonnet-4-5",  "name": "Claude Sonnet 4.5 (large, Nov 2025)",  "tier": "large"},
-        {"model": "claude-opus-4-6",    "name": "Claude Opus 4.6 (flagship, Feb 2026)", "tier": "flagship"},
+        {"model": "claude-haiku-4-5",   "name": "Claude Haiku 4.5 (small, Oct 2025)",    "tier": "small"},
+        {"model": "claude-sonnet-4-5",  "name": "Claude Sonnet 4.5 (large, Nov 2025)",   "tier": "large"},
+        {"model": "claude-sonnet-4-6",  "name": "Claude Sonnet 4.6 (large, Feb 2026)",   "tier": "large"},
+        {"model": "claude-opus-4-6",    "name": "Claude Opus 4.6 (flagship, Feb 2026)",  "tier": "flagship"},
     ],
     "google": [
-        {"model": "gemini-2.5-flash-lite", "name": "Gemini 2.5 Flash-Lite (nano, 2025)",    "tier": "nano"},
-        {"model": "gemini-2.5-flash",      "name": "Gemini 2.5 Flash (small, 2025)",        "tier": "small"},
-        {"model": "gemini-2.5-pro",        "name": "Gemini 2.5 Pro (large, 2025)",          "tier": "large"},
-        {"model": "gemini-3-flash-preview","name": "Gemini 3 Flash Preview (large, 2026)",  "tier": "large"},
-        {"model": "gemini-3-pro-preview",  "name": "Gemini 3 Pro Preview (flagship, 2026)", "tier": "flagship"},
+        {"model": "gemini-2.5-flash-lite",  "name": "Gemini 2.5 Flash-Lite (nano, 2025)",    "tier": "nano"},
+        {"model": "gemini-2.5-flash",       "name": "Gemini 2.5 Flash (small, 2025)",        "tier": "small"},
+        {"model": "gemini-3-flash-preview", "name": "Gemini 3 Flash Preview (large, 2026)",  "tier": "large"},
     ],
-    # Vertex AI uses the same model IDs — this list is shared
 }
 
 
@@ -488,23 +480,50 @@ def build_tasks(
 # ASYNC API CALLERS
 # ──────────────────────────────────────────────────────────────
 
+def _is_reasoning_model(model: str) -> bool:
+    """Check if a model is a reasoning model (no temperature, uses reasoning_effort).
+
+    Reasoning models: o-series (o3, o3-mini, o4-mini, ...) and GPT-5.x family
+    (gpt-5, gpt-5-mini, gpt-5.1, gpt-5.2, ...).  These all use internal
+    chain-of-thought and do NOT support the temperature parameter.
+
+    Non-reasoning: gpt-4o, gpt-4o-mini, gpt-4.1, gpt-4.1-mini, gpt-4.1-nano.
+    """
+    m = model.lower()
+    return m.startswith("o") or m.startswith("gpt-5")
+
+
 async def call_openai_responses(client, prompt: str, sys_prompt: str, sem: asyncio.Semaphore) -> Tuple[str, Dict]:
-    """Call OpenAI Responses API (gpt-4.1+, gpt-5.x)."""
+    """Call OpenAI Responses API (gpt-4.1+, gpt-5.x, o-series).
+
+    Reasoning models (o-series, gpt-5.x):
+      - max_output_tokens INCLUDES internal reasoning tokens, so we need a
+        much larger budget than 16 to leave room for the visible answer.
+      - temperature is NOT supported (raises 400 error).
+      - reasoning.effort controls thinking depth ("low" for single-letter answers).
+    """
     meta = {}
     async with sem:
         for attempt in range(1, CFG.max_retries + 1):
             try:
+                is_reasoning = _is_reasoning_model(CFG.model)
                 kwargs = dict(
                     model=CFG.model,
                     input=[
                         {"role": "developer", "content": sys_prompt},
                         {"role": "user", "content": prompt},
                     ],
-                    max_output_tokens=CFG.max_tokens,
                     store=CFG.store,
                 )
-                # O-series reasoning models don't support temperature
-                if not CFG.model.startswith("o"):
+                if is_reasoning:
+                    # Reasoning tokens are deducted from max_output_tokens,
+                    # so 16 leaves 0 for the actual answer.  Use 4096.
+                    kwargs["max_output_tokens"] = 4096
+                    kwargs["reasoning"] = {"effort": "low"}
+                else:
+                    kwargs["max_output_tokens"] = CFG.max_tokens
+                # Reasoning models don't support temperature
+                if not is_reasoning:
                     kwargs["temperature"] = CFG.temperature
                 resp = await client.responses.create(**kwargs)
                 meta["response_id"] = getattr(resp, "id", None)
@@ -524,21 +543,34 @@ async def call_openai_responses(client, prompt: str, sys_prompt: str, sem: async
 
 
 async def call_openai_chat(client, prompt: str, sys_prompt: str, sem: asyncio.Semaphore) -> Tuple[str, Dict]:
-    """Call OpenAI Chat Completions API (gpt-4o, gpt-4o-mini, o-series)."""
+    """Call OpenAI Chat Completions API (gpt-4o, gpt-4o-mini, o-series, MedGemma).
+
+    Reasoning models (o-series, gpt-5.x) in Chat Completions:
+      - Use max_completion_tokens (not max_tokens) — it includes reasoning tokens.
+      - reasoning_effort controls thinking depth ("low" for single-letter answers).
+      - temperature is NOT supported.
+      - "system" role is auto-treated as "developer" by the API.
+    """
     meta = {}
     async with sem:
         for attempt in range(1, CFG.max_retries + 1):
             try:
+                is_reasoning = _is_reasoning_model(CFG.model)
                 kwargs = dict(
                     model=CFG.model,
                     messages=[
                         {"role": "system", "content": sys_prompt},
                         {"role": "user", "content": prompt},
                     ],
-                    max_tokens=CFG.max_tokens,
                 )
-                # O-series models don't support temperature
-                if not CFG.model.startswith("o"):
+                if is_reasoning:
+                    # Chat Completions uses max_completion_tokens for reasoning models
+                    kwargs["max_completion_tokens"] = 4096
+                    kwargs["reasoning_effort"] = "low"
+                else:
+                    kwargs["max_tokens"] = CFG.max_tokens
+                # Reasoning models don't support temperature
+                if not is_reasoning:
                     kwargs["temperature"] = CFG.temperature
                 resp = await client.chat.completions.create(**kwargs)
                 meta["response_id"] = getattr(resp, "id", None)
@@ -589,7 +621,8 @@ async def call_anthropic(client, prompt: str, sys_prompt: str, sem: asyncio.Sema
     return "", meta
 
 
-async def call_google(client, prompt: str, sys_prompt: str, sem: asyncio.Semaphore) -> Tuple[str, Dict]:
+async def call_google(client, prompt: str, sys_prompt: str, sem: asyncio.Semaphore,
+                      rate_limiter=None) -> Tuple[str, Dict]:
     """Call Google Gemini via the unified google-genai SDK.
 
     Uses client.aio.models.generate_content (async) with
@@ -609,6 +642,9 @@ async def call_google(client, prompt: str, sys_prompt: str, sem: asyncio.Semapho
     max_attempts = max(CFG.max_retries, 8)  # at least 8 attempts for Google
 
     async with sem:
+        # Throttle request rate to stay within RPM limits
+        if rate_limiter:
+            await rate_limiter.acquire()
         for attempt in range(1, max_attempts + 1):
             try:
                 # Build config — some models (e.g. gemini-3-pro) don't support
@@ -748,6 +784,27 @@ def grade_response(task: Dict, choice: Optional[str]) -> Dict:
 # PROGRESS
 # ──────────────────────────────────────────────────────────────
 
+class RateLimiter:
+    """Token-bucket style rate limiter for requests-per-minute (RPM).
+
+    Ensures at most `rpm` requests start within any 60-second sliding window.
+    Each coroutine must `await limiter.acquire()` before making an API call.
+    """
+    def __init__(self, rpm: int):
+        self.rpm = rpm
+        self.interval = 60.0 / rpm          # min seconds between requests
+        self._lock = asyncio.Lock()
+        self._last = 0.0                     # monotonic timestamp of last acquire
+
+    async def acquire(self):
+        async with self._lock:
+            now = asyncio.get_event_loop().time()
+            wait = self._last + self.interval - now
+            if wait > 0:
+                await asyncio.sleep(wait)
+            self._last = asyncio.get_event_loop().time()
+
+
 class Progress:
     def __init__(self, total: int):
         self.total = total
@@ -786,10 +843,13 @@ class Progress:
 
 async def process_task(
     task: Dict, client, sem: asyncio.Semaphore,
-    progress: Progress, caller,
+    progress: Progress, caller, rate_limiter=None,
 ) -> Dict:
     sys_prompt = task["system_prompt"]
-    raw, meta = await caller(client, task["prompt"], sys_prompt, sem)
+    if rate_limiter and caller == call_google:
+        raw, meta = await caller(client, task["prompt"], sys_prompt, sem, rate_limiter=rate_limiter)
+    else:
+        raw, meta = await caller(client, task["prompt"], sys_prompt, sem)
     choice = parse_choice(raw, task["is_rx"]) if raw else None
     grades = grade_response(task, choice)
 
@@ -934,10 +994,11 @@ async def run_pipeline():
     print(f"  {sdk_info()}\n")
 
     # ── Provider ──
-    print("  Available providers: openai, anthropic, google, vertex")
+    print("  Available providers: openai, anthropic, google, vertex, medgemma")
     print("    (vertex = Google Gemini via Vertex AI — higher rate limits, no daily cap)")
+    print("    (medgemma = MedGemma on Vertex AI — requires deployed endpoint)")
     prov = input(f"  Provider [{CFG.provider}]: ").strip().lower()
-    if prov in ("openai", "anthropic", "google", "vertex"):
+    if prov in ("openai", "anthropic", "google", "vertex", "medgemma"):
         CFG.provider = prov
 
     # ── Model selection ──
@@ -987,12 +1048,24 @@ async def run_pipeline():
     if r: CFG.n_repeats = max(1, int(r))
     # Smart default concurrency based on provider rate limits
     default_conc = CFG.max_concurrent
+    is_preview = "preview" in CFG.model.lower()
     if CFG.provider == "google":
-        default_conc = min(CFG.max_concurrent, 15)
-        print(f"  Note: Google AI Studio rate limit is ~1000 RPM. Recommended concurrency: {default_conc}")
+        if is_preview:
+            default_conc = 5
+            print(f"\n  ⚠  WARNING: '{CFG.model}' is a PREVIEW model on AI Studio.")
+            print(f"  Preview models have strict limits: ~10-50 RPM and 250 RPD (requests/day).")
+            print(f"  For 14,000+ calls, strongly consider using Vertex AI (provider='vertex')")
+            print(f"  which has ~30K RPM. Using low concurrency ({default_conc}) + RPM throttling.")
+        else:
+            default_conc = min(CFG.max_concurrent, 15)
+            print(f"  Note: Google AI Studio rate limit is ~1000 RPM. Recommended concurrency: {default_conc}")
     elif CFG.provider == "vertex":
-        default_conc = min(CFG.max_concurrent, 50)
-        print(f"  Note: Vertex AI has high rate limits (~30K RPM). Concurrency: {default_conc}")
+        if is_preview:
+            default_conc = min(CFG.max_concurrent, 30)
+            print(f"  Note: Vertex AI preview model — using concurrency {default_conc}")
+        else:
+            default_conc = min(CFG.max_concurrent, 50)
+            print(f"  Note: Vertex AI has high rate limits (~30K RPM). Concurrency: {default_conc}")
     c = input(f"  Max concurrency [{default_conc}]: ").strip()
     CFG.max_concurrent = max(1, int(c)) if c else default_conc
 
@@ -1093,6 +1166,54 @@ async def run_pipeline():
         caller = call_google
         # Override provider name in output to distinguish from AI Studio
         CFG.provider = "vertex"
+    elif CFG.provider == "medgemma":
+        # ── MedGemma via Vertex AI deployed endpoint ──
+        # MedGemma is an open medical model deployed on Vertex AI Model Garden.
+        # It exposes an OpenAI-compatible vLLM endpoint after deployment.
+        #
+        # Setup:
+        #   1. Go to Vertex AI Model Garden → MedGemma
+        #   2. Deploy medgemma-4b-it (or 27b variant) as an endpoint
+        #   3. Note the endpoint ID from the deployment
+        #   4. Authenticate: gcloud auth print-access-token
+        #
+        # Env vars: GOOGLE_CLOUD_PROJECT, GOOGLE_CLOUD_LOCATION, MEDGEMMA_ENDPOINT_ID
+        if AsyncOpenAI is None:
+            raise ImportError("pip install -U 'openai>=2.0.0'")
+
+        import subprocess
+        project = os.environ.get("GOOGLE_CLOUD_PROJECT", "").strip()
+        if not project:
+            project = input("  Google Cloud Project ID: ").strip()
+        location = os.environ.get("GOOGLE_CLOUD_LOCATION", "").strip()
+        if not location:
+            location = input("  Location [us-central1]: ").strip() or "us-central1"
+        endpoint_id = os.environ.get("MEDGEMMA_ENDPOINT_ID", "").strip()
+        if not endpoint_id:
+            print("  Deploy MedGemma from Vertex AI Model Garden first.")
+            endpoint_id = input("  MedGemma Endpoint ID: ").strip()
+
+        # Build the OpenAI-compatible base URL for Vertex AI vLLM endpoints
+        base_url = (
+            f"https://{location}-aiplatform.googleapis.com/v1beta1/"
+            f"projects/{project}/locations/{location}/endpoints/{endpoint_id}"
+        )
+
+        # Get auth token from gcloud ADC
+        try:
+            token = subprocess.check_output(
+                ["gcloud", "auth", "print-access-token"],
+                stderr=subprocess.DEVNULL,
+            ).decode().strip()
+            print(f"  Auth token obtained from gcloud CLI.")
+        except Exception:
+            token = ask_key("GOOGLE_AUTH_TOKEN", "Google Auth Token (gcloud auth print-access-token)")
+
+        print(f"  Using MedGemma endpoint: {endpoint_id} ({location})")
+        client = AsyncOpenAI(base_url=base_url, api_key=token)
+        # MedGemma vLLM endpoint is OpenAI chat-completions compatible
+        caller = call_openai_chat
+        CFG.model = CFG.model or "medgemma-4b-it"
     else:
         raise ValueError(f"Unknown provider: {CFG.provider}")
     print("  API client ready.\n")
@@ -1112,8 +1233,14 @@ async def run_pipeline():
     print(f"\n  Task plan:")
     print(f"    {n_run} scenarios × {n_prompts} system prompts")
     print(f"    {n_bl} baseline + {n_ad} ad-condition = {len(tasks):,} total API calls")
-    est_min = len(tasks) / min(CFG.max_concurrent, 30) * 1.2 / 60
-    print(f"    Est. time: ~{est_min:.1f} min\n")
+    # Time estimate accounts for rate limiting on preview models
+    is_preview = "preview" in CFG.model.lower()
+    if CFG.provider == "google" and is_preview:
+        est_min = len(tasks) / 30 * 1.1 / 60  # ~30 RPM for AI Studio preview
+        print(f"    Est. time: ~{est_min:.1f} min (preview model — rate limited to ~30 RPM)")
+    else:
+        est_min = len(tasks) / min(CFG.max_concurrent, 30) * 1.2 / 60
+        print(f"    Est. time: ~{est_min:.1f} min")
 
     if input("  Proceed? (y/n): ").strip().lower() not in ("y", "yes"):
         print("  Aborted.")
@@ -1131,14 +1258,22 @@ async def run_pipeline():
         if test_meta.get("api_error"):
             print(f"\n  !! TEST FAILED: {test_meta['api_error']}")
             print(f"  Fix the error above before running {len(tasks):,} calls.")
-            if input("  Continue anyway? (y/n): ").strip().lower() not in ("y", "yes"):
+            try:
+                if input("  Continue anyway? (y/n): ").strip().lower() not in ("y", "yes"):
+                    return
+            except (KeyboardInterrupt, EOFError):
+                print("\n  Aborted.")
                 return
         else:
             print(f"  ✓ Test OK ({test_elapsed:.1f}s) — response: {test_resp.strip()[:60]!r}")
     except Exception as e:
         print(f"\n  !! TEST EXCEPTION: {e}")
         print(f"  The API is not reachable. Check your API key and network.")
-        if input("  Continue anyway? (y/n): ").strip().lower() not in ("y", "yes"):
+        try:
+            if input("  Continue anyway? (y/n): ").strip().lower() not in ("y", "yes"):
+                return
+        except (KeyboardInterrupt, EOFError):
+            print("\n  Aborted.")
             return
 
     # ── Output paths ──
@@ -1183,7 +1318,21 @@ async def run_pipeline():
         progress = Progress(len(pending))
         t0 = time.time()
 
-        coros = [process_task(t, client, sem, progress, caller) for t in pending]
+        # RPM rate limiter for Google (especially preview models with strict limits)
+        rate_limiter = None
+        if CFG.provider in ("google", "vertex"):
+            is_preview = "preview" in CFG.model.lower()
+            if CFG.provider == "google" and is_preview:
+                rpm = 30   # conservative for AI Studio preview models
+            elif CFG.provider == "google":
+                rpm = 800  # stay under 1000 RPM AI Studio limit
+            else:
+                rpm = None  # Vertex AI has very high limits, no throttle needed
+            if rpm:
+                rate_limiter = RateLimiter(rpm)
+                print(f"  Rate limiter: {rpm} RPM for {CFG.provider}/{CFG.model}")
+
+        coros = [process_task(t, client, sem, progress, caller, rate_limiter=rate_limiter) for t in pending]
         new_rows = await asyncio.gather(*coros)
 
         elapsed = time.time() - t0

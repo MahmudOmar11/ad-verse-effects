@@ -56,7 +56,7 @@
   <!-- Stats pills -->
   <g transform="translate(230, 210)">
     <rect x="0" y="0" width="130" height="36" rx="18" fill="url(#pill)" stroke="#e94560" stroke-width="0.8" stroke-opacity="0.3"/>
-    <text x="65" y="23" text-anchor="middle" fill="#e8e8f0" font-size="13" font-weight="600">15 LLMs</text>
+    <text x="65" y="23" text-anchor="middle" fill="#e8e8f0" font-size="13" font-weight="600">12 LLMs</text>
   </g>
   <g transform="translate(380, 210)">
     <rect x="0" y="0" width="130" height="36" rx="18" fill="url(#pill)" stroke="#e94560" stroke-width="0.8" stroke-opacity="0.3"/>
@@ -68,7 +68,7 @@
   </g>
   <g transform="translate(680, 210)">
     <rect x="0" y="0" width="160" height="36" rx="18" fill="url(#pill)" stroke="#e94560" stroke-width="0.8" stroke-opacity="0.3"/>
-    <text x="80" y="23" text-anchor="middle" fill="#e8e8f0" font-size="13" font-weight="600">320K+ API Calls</text>
+    <text x="80" y="23" text-anchor="middle" fill="#e8e8f0" font-size="13" font-weight="600">256K API Calls</text>
   </g>
 
   <!-- Author -->
