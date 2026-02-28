@@ -8,3 +8,5 @@ venv/
 *.jsonl
 *.tmp
 *.bak
+results/
+*.env
