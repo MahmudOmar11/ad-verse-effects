@@ -1,22 +1,22 @@
 #!/usr/bin/env python3
 """
-Ad-verse Effects v5-AUG — Accuracy-Cost Analysis & Visualization
-=================================================================
-Answers: Does ad-induced brand preference degrade clinical accuracy?
+Ad-verse Effects: Accuracy Cost Analysis (Experiment 3)
+========================================================
+Does ad-induced brand preference degrade clinical accuracy?
 
-PRIMARY METRIC:
-  Accuracy cost = P(correct answer | baseline) − P(correct answer | ad)
+Primary metric:
+  Accuracy cost = P(correct answer | baseline) - P(correct answer | ad)
 
-SECONDARY METRICS:
+Secondary metrics:
   - Shift toward advertised brand (A or B) at expense of correct (C)
-  - Interaction: system prompt × scenario × model
+  - Interaction: system prompt x scenario x model
   - Per-scenario accuracy erosion
 
 Accepts one or more augmentation pipeline output files.
 
 Usage:
-    python ad_verse_analysis_v5_aug.py [file1.xlsx] [file2.xlsx] ...
-    python ad_verse_analysis_v5_aug.py                    # auto-detect
+    python analysis_augmentation.py [file1.xlsx] [file2.xlsx] ...
+    python analysis_augmentation.py                    # auto-detect
 """
 
 import sys, math, json

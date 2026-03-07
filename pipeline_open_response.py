@@ -1,41 +1,40 @@
 #!/usr/bin/env python3
 """
-Ad-verse Effects: Open-Response Sub-Analysis Pipeline  (v2 -- expanded)
-=======================================================================
-Tests whether pharmaceutical advertising contaminates the JUSTIFICATIONS
-that AI health assistants provide, beyond merely shifting drug choice.
+Ad-verse Effects: Open-Response Pipeline (Experiment 4)
+========================================================
+Tests whether pharmaceutical advertising restructures the clinical
+justifications that AI health assistants provide, beyond shifting
+drug choice.
 
-Expanded Design:
-  - 3 models (1 per provider, selected for diverse shift profiles):
-      Google:    Gemini 2.5 Flash   (high ad susceptibility,  +32.0 pp)
-      OpenAI:    GPT-4.1            (moderate susceptibility, +16.6 pp)
-      Anthropic: Claude Opus 4.6    (resistant,               -3.8 pp)
-  - 13 Experiment-1 scenarios (S01-S13), Variant 1 only
+Design:
+  - 3 models (1 per provider, spanning the susceptibility range):
+      Google:    Gemini 2.5 Flash   (high susceptibility,  +32.0 pp)
+      OpenAI:    GPT-4.1            (moderate,             +16.6 pp)
+      Anthropic: Claude Opus 4.6    (resistant,             -3.8 pp)
+  - 13 equipoise scenarios (S01-S13), Variant 1 only
   - 3 conditions: baseline, ad_a, ad_b
-  - 4 persona conditions: physician, helpful_ai, customer_service, no_persona
-  - 5 repeats per cell (temperature=0.7 stochastic sampling)
-  = 3 models x 13 scenarios x 3 conditions x 4 personas x 5 reps = 2,340 calls
+  - 4 personas: physician, helpful_ai, customer_service, no_persona
+  - 5 repeats per cell (temperature 0.7)
+  - Total: 3 x 13 x 3 x 4 x 5 = 2,340 calls
 
 Primary outputs (per response):
   1. Structured choice (A/B/C/D)
-  2. Free-text justification with clinical reasoning
+  2. Free-text clinical justification
   3. Self-reported confidence level
-  4. Stated alternatives considered and why rejected
+  4. Stated alternatives considered
 
-Automated NLP metrics (computed in analysis script):
-  1. Ad-echo rate        -- proportion of ad claims echoed in justification
-  2. Confidence asymmetry -- confidence for advertised vs non-advertised choices
+NLP metrics (computed in analysis_open_response.py):
+  1. Ad-echo rate              -- proportion of ad claims echoed
+  2. Confidence asymmetry      -- confidence for advertised vs non-advertised
   3. Competitor mention suppression -- rate of mentioning non-chosen alternatives
-  4. Evidence specificity -- citations of trials, guidelines, mechanisms
-  5. Disclosure rate     -- whether the model acknowledges the ad
-  6. Shift-toward-advertised rate -- primary outcome metric
+  4. Evidence specificity      -- citations of trials, guidelines, mechanisms
+  5. Disclosure rate           -- whether model acknowledges the ad
 
 Requirements:
-    pip install -U "openai>=2.0.0" "anthropic>=0.40.0" \
-        "google-genai>=1.0.0" pandas openpyxl
+    pip install -r requirements.txt
 
 Usage:
-    python ad_verse_open_response_pipeline.py
+    python pipeline_open_response.py
 """
 
 import asyncio, json, os, re, sys, getpass, hashlib, time

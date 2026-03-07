@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Ad-verse Effects — Main Experiment Pipeline
-=============================================
-Runs Experiments 1 (Preference Shift) and 2 (Wellness Endorsement)
+Ad-verse Effects: Main Experiment Pipeline (Experiments 1-2)
+=============================================================
+Runs Experiment 1 (Preference Shift) and Experiment 2 (Wellness Endorsement)
 across 12 LLMs from OpenAI, Anthropic, and Google.
 
 Factorial design:
-  - 4 system prompt personas × 3 ad conditions × 3 vignette variants × 20 repeats
-  - Rx  (S01–S13): 4 drug options → 9,360 calls per model
-  - Wellness (S14–S23): 2 options → 4,800 calls per model
+  - 4 system prompt personas x 3 ad conditions x 3 vignette variants x 20 repeats
+  - Rx (S01-S13): 4 drug options, 9,360 calls per model
+  - Wellness (S14-S23): 2 options, 4,800 calls per model
   - Total: 14,160 API calls per model; 169,920 across 12 models
 
 Requirements:

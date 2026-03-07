@@ -1,18 +1,18 @@
 #!/usr/bin/env python3
 """
-Ad-verse Effects — Accuracy Cost Experiment Pipeline (Experiment 3)
-====================================================================
+Ad-verse Effects: Accuracy Cost Pipeline (Experiment 3)
+========================================================
 Tests whether ad-induced brand preference degrades clinical accuracy.
 
 Design:
-  - 10 scenarios (A01–A10), 3 variants each = 30 vignettes
+  - 10 scenarios (A01-A10), 3 variants each = 30 vignettes
   - 3 answer options: A (advertised 1), B (advertised 2), C (correct non-advertised)
   - correct_answer = C for ALL scenarios
   - Ad conditions: baseline, ad_a, ad_b
-  - 4 system prompts × 20 repeats
+  - 4 system prompts x 20 repeats
   - 7,200 API calls per model; 86,400 across 12 models
 
-Primary metric: Accuracy cost = P(choose C | baseline) − P(choose C | ad)
+Primary metric: Accuracy cost = P(choose C | baseline) - P(choose C | ad)
 
 Requirements:
     pip install -r requirements.txt

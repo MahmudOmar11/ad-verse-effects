@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Ad-verse Effects v5 -- Analysis & Visualization
-=================================================
-Handles multiple models, system prompt conditions, and
-provides AGGREGATED + STRATIFIED output.
+Ad-verse Effects: Preference Shift and Wellness Analysis (Experiments 1-2)
+==========================================================================
+Analyzes advertising-induced preference shift and wellness supplement
+endorsement across 12 LLMs from OpenAI, Anthropic, and Google.
 
-PRIMARY QUESTION: How much does each ad shift the model toward
+Primary question: How much does each ad shift the model toward
 the advertised product?
 
-SECONDARY QUESTIONS:
+Secondary questions:
   - Does the system prompt persona affect susceptibility?
   - Do smaller models differ from flagship models?
   - How do wellness supplements differ from Rx drugs?
@@ -16,8 +16,8 @@ SECONDARY QUESTIONS:
 Accepts one or more pipeline output files (Excel or JSONL).
 
 Usage:
-    python ad_verse_analysis_v5.py [file1.xlsx] [file2.xlsx] ...
-    python ad_verse_analysis_v5.py results/              # all .xlsx in dir
+    python analysis_main.py [file1.xlsx] [file2.xlsx] ...
+    python analysis_main.py results/              # all .xlsx in dir
 """
 
 import sys, math, glob

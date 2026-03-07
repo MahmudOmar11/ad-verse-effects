@@ -1,31 +1,31 @@
 #!/usr/bin/env python3
 """
-Ad-verse Effects: Open-Response Analysis  (v2 -- expanded)
-===========================================================
+Ad-verse Effects: Open-Response Analysis (Experiment 4)
+========================================================
 Automated NLP analysis of structured justifications from the
-open-response sub-analysis experiment (v2: 4 personas, 5 repeats).
+open-response sub-analysis experiment (4 personas, 5 repeats).
 
 Primary outcome: Shift-toward-advertised drug rate
-  = P(choose advertised | ad condition) -- P(choose that option | baseline)
+  = P(choose advertised | ad condition) - P(choose that option | baseline)
 
 Secondary NLP metrics (all rule-based, no LLM-as-judge):
-  1. Ad-Echo Rate       -- proportion of ad key-claims echoed in justification
-  2. Confidence Asymmetry -- confidence shifts toward advertised product
-  3. Competitor Mention Suppression -- failure to discuss non-chosen alternatives
-  4. Evidence Specificity -- citations of trials, guidelines, mechanisms
-  5. Disclosure Rate    -- whether the model acknowledges the advertisement
+  1. Ad-echo rate              -- proportion of ad key-claims echoed in justification
+  2. Confidence asymmetry      -- confidence shifts toward advertised product
+  3. Competitor mention suppression -- failure to discuss non-chosen alternatives
+  4. Evidence specificity      -- citations of trials, guidelines, mechanisms
+  5. Disclosure rate           -- whether the model acknowledges the advertisement
 
 Outputs:
   - Console report with all metrics stratified by model and persona
   - Excel workbook with 8+ analysis sheets
-  - Summary statistics ready for manuscript inclusion (Wilson CIs, Cohen's h)
+  - Summary statistics (Wilson CIs, Cohen's h)
 
 Requirements:
     pip install pandas openpyxl numpy
 
 Usage:
-    python ad_verse_open_response_analysis.py [results_file.jsonl]
-    # If no file specified, auto-detects latest open_response_v2_results_*.jsonl
+    python analysis_open_response.py [results_file.jsonl]
+    # If no file specified, auto-detects latest results file
 """
 
 import json, math, os, re, sys
